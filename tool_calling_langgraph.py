@@ -22,6 +22,7 @@ class GraphState(TypedDict):
     Patient_Number: int
     df1: List[dict]
     df2: List[dict]
+    file_path: str
     merged: List[dict]
     messages: List
 
@@ -94,7 +95,7 @@ def merge_node(state: GraphState):
 
     print("Completed Merging Node!!")
 
-    return {"merged": merged_df.to_dict(orient="records")}
+    return {"merged": merged_df.to_dict(orient="records"), "file_path": file_path}
 
 ## Node 4:
 def doctor_node(state: GraphState):
@@ -117,11 +118,14 @@ def doctor_node(state: GraphState):
     - DO NOT call tools again
     - Provide final answer
 
-    3. Final answer must include:
-    - Risk level
-    - BMI explanation
-    - Diet recommendation
-    - Lifestyle advice
+    3. Return FINAL ANSWER in STRICT JSON format:
+
+    {{
+    "Risk_Level": "...",
+    "BMI_Explanation": "...",
+    "Diet_Recommendation": "...",
+    "Lifestyle_Advice": "..."
+    }}
 
     If tool results are already available, DO NOT call tools again.
     """
@@ -239,12 +243,40 @@ builder.add_edge("tools","doctor")
 graph = builder.compile()
 
 if __name__ == "__main__":
-    result = graph.invoke({
+    ai_response = graph.invoke({
         "input_path1": r"F:\GEN_AI\Graph_CrewAI\data\healthcare_dataset1.csv",
         "input_path2": r"F:\GEN_AI\Graph_CrewAI\data\healthcare_dataset2.csv",
         "Patient_Number": int(input("Enter Patient Number: ")),
         "messages": []      
     })
 
-    print("AI Doctor Output: \n")
-    print(result["messages"][-1].content)
+    #print("AI Doctor Output: \n")
+    #print(ai_response["messages"][-1].content)
+    ai_text = ai_response["messages"][-1].content
+    file_path = ai_response["file_path"]
+
+    # 🔹 Try to convert AI output into JSON
+    try:
+        structured_output = json.loads(ai_text)
+    except:
+        structured_output = {
+            "Risk_Level": "",
+            "BMI_Explanation": "",
+            "Diet_Recommendation": "",
+            "Lifestyle_Advice": "",
+            "raw_output": ai_text   # fallback if parsing fails
+        }
+
+    # 🔹 Load existing file
+    with open(file_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    # 🔹 Append structured AI output
+    for record in data:
+        record["AI_Analysis"] = structured_output
+
+    # 🔹 Save back to file
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+    print(f"✅ AI response appended to file: {file_path}")
